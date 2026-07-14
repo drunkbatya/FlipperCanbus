@@ -1,0 +1,3 @@
+[submodule "src/lib/mcp251Xfd"]
+	path = src/lib/mcp251Xfd
+	url = https://github.com/Emandhal/MCP251XFD.git
