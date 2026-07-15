@@ -1,17 +1,37 @@
-# For details & more options, see documentation/AppManifests.md in firmware repo
 
 App(
     appid="flipper_canbus",  # Must be unique
-    name="App flipper_canbus",  # Displayed in menus
+    name="FlipperCanbus",  # Displayed in menus
     apptype=FlipperAppType.EXTERNAL,
     entry_point="flipper_canbus_app",
-    stack_size=2 * 1024,
+    stack_size=4 * 1024,
     fap_category="Examples",
-    # Optional values
-    # fap_version="0.1",
+    fap_private_libs=[
+        Lib(
+            name="mcp251Xfd",
+            fap_include_paths=[".", "../mcp251Xfd_glue"],
+            cflags=["-Wno-error=type-limits"],
+            cincludes=["lib/mcp251Xfd_glue"],
+            sources=[
+                "MCP251XFD.c",
+                "CRC/CRC16_CMS.c",
+                "CRC/CRC16_USB.c",
+                "CRC/CRC_CAN.c",
+            ],
+        ),
+        Lib(
+            name="mcp251Xfd_glue",
+            fap_include_paths=["."],
+            cdefines=["USE_ERRORS_STRING"],
+            cincludes=["lib/mcp251Xfd", "lib/mcp251Xfd_glue"],
+            sources=[
+                "mcp251Xfd_glue.c",
+            ],
+        ),
+    ],
     fap_icon="flipper_canbus.png",  # 10x10 1-bit PNG
-    # fap_description="A simple app",
-    # fap_author="J. Doe",
-    # fap_weburl="https://github.com/user/flipper_canbus",
+    fap_description="App to test Flipper CanLin Module",
+    fap_author="drunkbatya",
+    fap_weburl="https://github.com/drunkbatya/FlipperCanbus",
     fap_icon_assets="images",  # Image assets to compile for this application
 )

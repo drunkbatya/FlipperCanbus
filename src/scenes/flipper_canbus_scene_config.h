@@ -1,0 +1,6 @@
+ADD_SCENE(flipper_canbus, menu, Menu)
+ADD_SCENE(flipper_canbus, settings, Settings)
+ADD_SCENE(flipper_canbus, dashboard, Dashboard)
+ADD_SCENE(flipper_canbus, canbus, Canbus)
+ADD_SCENE(flipper_canbus, canbus_detail, CanbusDetail)
+ADD_SCENE(flipper_canbus, error, Error)
