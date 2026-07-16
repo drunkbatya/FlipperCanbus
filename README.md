@@ -8,7 +8,7 @@
 
 
 ## About
-This app allows you to monitor CAN bus using Flipper CAN/LIN module. Also now it includes a rusefi can broadcast text dashboard. Very raw version with hardcoded can speed and mode, just to test my module and my ECU.
+This app allows you to monitor CAN bus using Flipper CAN/LIN module. Also now it includes a [rusefi](https://github.com/rusefi/rusefi) can broadcast text dashboard. Very raw version with hardcoded can speed and mode, just to test my module and my ECU.
 
 ## Build
 ```bash
