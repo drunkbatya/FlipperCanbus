@@ -9,6 +9,7 @@
 #include <gui/gui.h>
 #include <gui/modules/dialog_ex.h>
 #include <gui/modules/submenu.h>
+#include <gui/modules/widget.h>
 #include <gui/scene_manager.h>
 #include <gui/view_dispatcher.h>
 
@@ -19,6 +20,7 @@ typedef struct {
 
     Submenu* submenu;
     DialogEx* dialog_ex;
+    Widget* widget;
     FlipperCanbusViewDashboard* view_dashboard;
     FlipperCanbusViewCanbus* view_canbus;
 
@@ -32,6 +34,7 @@ typedef enum {
     FlipperCanbusViewDashboardScreen,
     FlipperCanbusViewCanbusDetail,
     FlipperCanbusViewDialogEx,
+    FlipperCanbusViewWidget,
 } FlipperCanbusView;
 
 typedef enum {

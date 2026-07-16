@@ -4,6 +4,7 @@ typedef enum {
     SubmenuIndexDashboard,
     SubmenuIndexCanMonitor,
     SubmenuIndexSettings,
+    SubmenuIndexAbout,
 } SubmenuIndex;
 
 static void flipper_canbus_scene_menu_submenu_callback(void* context, uint32_t index) {
@@ -32,6 +33,8 @@ void flipper_canbus_scene_menu_on_enter(void* context) {
         app);
     submenu_add_item(
         submenu, "Settings", SubmenuIndexSettings, flipper_canbus_scene_menu_submenu_callback, app);
+    submenu_add_item(
+        submenu, "About", SubmenuIndexAbout, flipper_canbus_scene_menu_submenu_callback, app);
     submenu_set_selected_item(
         submenu, scene_manager_get_scene_state(app->scene_manager, FlipperCanbusSceneMenu));
 
@@ -51,6 +54,9 @@ bool flipper_canbus_scene_menu_on_event(void* context, SceneManagerEvent event) 
             consumed = true;
         } else if(event.event == SubmenuIndexSettings) {
             scene_manager_next_scene(app->scene_manager, FlipperCanbusSceneSettings);
+            consumed = true;
+        } else if(event.event == SubmenuIndexAbout) {
+            scene_manager_next_scene(app->scene_manager, FlipperCanbusSceneAbout);
             consumed = true;
         }
         scene_manager_set_scene_state(app->scene_manager, FlipperCanbusSceneMenu, event.event);

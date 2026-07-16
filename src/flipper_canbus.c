@@ -53,6 +53,10 @@ static FlipperCanbusApp* flipper_canbus_app_alloc(void) {
     view_dispatcher_add_view(
         app->view_dispatcher, FlipperCanbusViewDialogEx, dialog_ex_get_view(app->dialog_ex));
 
+    app->widget = widget_alloc();
+    view_dispatcher_add_view(
+        app->view_dispatcher, FlipperCanbusViewWidget, widget_get_view(app->widget));
+
     app->view_dashboard = flipper_canbus_view_dashboard_alloc();
     view_dispatcher_add_view(
         app->view_dispatcher,
@@ -86,9 +90,11 @@ static void flipper_canbus_app_free(FlipperCanbusApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, FlipperCanbusViewDashboardScreen);
     view_dispatcher_remove_view(app->view_dispatcher, FlipperCanbusViewCanbusDetail);
     view_dispatcher_remove_view(app->view_dispatcher, FlipperCanbusViewDialogEx);
+    view_dispatcher_remove_view(app->view_dispatcher, FlipperCanbusViewWidget);
 
     submenu_free(app->submenu);
     dialog_ex_free(app->dialog_ex);
+    widget_free(app->widget);
     flipper_canbus_view_dashboard_free(app->view_dashboard);
     flipper_canbus_view_canbus_free(app->view_canbus);
 
