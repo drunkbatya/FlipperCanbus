@@ -4,7 +4,10 @@
 
 #include <stdlib.h>
 
-static void flipper_canbus_worker_error_callback(void* context);
+static void flipper_canbus_worker_error_callback(
+    void* context,
+    FlipperCanbusWorkerErrorResult error,
+    const char* driver_error);
 
 static bool flipper_canbus_app_custom_event_callback(void* context, uint32_t event) {
     furi_assert(context);
@@ -15,7 +18,11 @@ static bool flipper_canbus_app_custom_event_callback(void* context, uint32_t eve
 static bool flipper_canbus_app_back_event_callback(void* context) {
     furi_assert(context);
     FlipperCanbusApp* app = context;
-    return scene_manager_handle_back_event(app->scene_manager);
+    if(scene_manager_handle_back_event(app->scene_manager)) return true;
+
+    view_dispatcher_switch_to_view(app->view_dispatcher, VIEW_NONE);
+    view_dispatcher_stop(app->view_dispatcher);
+    return true;
 }
 
 static void flipper_canbus_app_tick_event_callback(void* context) {
@@ -110,13 +117,20 @@ static void flipper_canbus_app_free(FlipperCanbusApp* app) {
     free(app);
 }
 
-static void flipper_canbus_worker_error_callback(void* context) {
+static void flipper_canbus_worker_error_callback(
+    void* context,
+    FlipperCanbusWorkerErrorResult error,
+    const char* driver_error) {
     FlipperCanbusApp* app = context;
-    view_dispatcher_send_custom_event(app->view_dispatcher, FlipperCanbusCustomEventWorkerError);
+    app->worker_error = error;
+    app->driver_error = driver_error;
+    app->worker_error_pending = true;
 }
 
 void flipper_canbus_app_start_worker(FlipperCanbusApp* app) {
     furi_assert(app);
+    app->worker_error_pending = false;
+    app->driver_error = NULL;
     flipper_canbus_worker_start(app->can_worker);
 }
 
@@ -124,6 +138,18 @@ void flipper_canbus_app_stop_worker(FlipperCanbusApp* app) {
     furi_assert(app);
     flipper_canbus_worker_send_stop(app->can_worker);
     flipper_canbus_worker_await_stop(app->can_worker);
+}
+
+bool flipper_canbus_app_is_worker_error_pending(FlipperCanbusApp* app) {
+    furi_assert(app);
+    return app->worker_error_pending;
+}
+
+void flipper_canbus_app_show_worker_error(FlipperCanbusApp* app, FlipperCanbusScene retry_scene) {
+    furi_assert(app);
+    app->worker_error_pending = false;
+    scene_manager_set_scene_state(app->scene_manager, FlipperCanbusSceneError, retry_scene);
+    scene_manager_next_scene(app->scene_manager, FlipperCanbusSceneError);
 }
 
 int32_t flipper_canbus_app(void* p) {

@@ -4,11 +4,9 @@ static void flipper_canbus_scene_canbus_detail_update(FlipperCanbusApp* app) {
     FlipperCanbusFrame frame;
     uint32_t selected_can_id =
         scene_manager_get_scene_state(app->scene_manager, FlipperCanbusSceneCanbusDetail);
-    if(flipper_canbus_worker_get_frame(app->can_worker, selected_can_id, &frame)) {
-        flipper_canbus_view_canbus_update(app->view_canbus, &frame);
-    } else {
-        flipper_canbus_view_canbus_update(app->view_canbus, NULL);
-    }
+    if(!flipper_canbus_worker_get_frame(app->can_worker, selected_can_id, &frame)) return;
+
+    flipper_canbus_view_canbus_update(app->view_canbus, &frame);
 }
 
 void flipper_canbus_scene_canbus_detail_on_enter(void* context) {
@@ -22,15 +20,12 @@ bool flipper_canbus_scene_canbus_detail_on_event(void* context, SceneManagerEven
     bool consumed = false;
 
     if(event.type == SceneManagerEventTypeTick) {
-        flipper_canbus_scene_canbus_detail_update(app);
-        consumed = true;
-    } else if(event.type == SceneManagerEventTypeCustom) {
-        if(event.event == FlipperCanbusCustomEventWorkerError) {
-            scene_manager_set_scene_state(
-                app->scene_manager, FlipperCanbusSceneError, FlipperCanbusSceneCanbus);
-            scene_manager_next_scene(app->scene_manager, FlipperCanbusSceneError);
-            consumed = true;
+        if(flipper_canbus_app_is_worker_error_pending(app)) {
+            flipper_canbus_app_show_worker_error(app, FlipperCanbusSceneCanbus);
+        } else {
+            flipper_canbus_scene_canbus_detail_update(app);
         }
+        consumed = true;
     }
 
     return consumed;

@@ -4,15 +4,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <furi/core/string.h>
-
 #define FLIPPER_CANBUS_MAX_IDS        256U
 #define FLIPPER_CANBUS_MAX_FRAME_SIZE 8U
 
 typedef struct FlipperCanbusWorker FlipperCanbusWorker;
 
 typedef enum {
-    FlipperCanbusWorkerErrorSpiTransfer,
     FlipperCanbusWorkerErrorGetFifoStatus,
     FlipperCanbusWorkerErrorReceiveMessage,
     FlipperCanbusWorkerErrorMcpInit,
@@ -20,9 +17,13 @@ typedef enum {
     FlipperCanbusWorkerErrorStandardFilterConfig,
     FlipperCanbusWorkerErrorExtendedFilterConfig,
     FlipperCanbusWorkerErrorStartCan,
+    FlipperCanbusWorkerErrorCount,
 } FlipperCanbusWorkerErrorResult;
 
-typedef void (*FlipperCanbusWorkerErrorCallback)(void* context);
+typedef void (*FlipperCanbusWorkerErrorCallback)(
+    void* context,
+    FlipperCanbusWorkerErrorResult error,
+    const char* driver_error);
 
 typedef struct {
     uint32_t id;
@@ -52,4 +53,9 @@ bool flipper_canbus_worker_get_frame(
     FlipperCanbusWorker* worker,
     uint32_t id,
     FlipperCanbusFrame* frame);
-void flipper_canbus_worker_format_last_error(FlipperCanbusWorker* worker, FuriString* text);
+void flipper_canbus_worker_get_frames(
+    FlipperCanbusWorker* worker,
+    const uint32_t* ids,
+    FlipperCanbusFrame* frames,
+    bool* found,
+    size_t count);

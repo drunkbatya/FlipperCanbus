@@ -9,25 +9,21 @@ static void flipper_canbus_scene_dashboard_update(FlipperCanbusApp* app) {
 void flipper_canbus_scene_dashboard_on_enter(void* context) {
     FlipperCanbusApp* app = context;
 
-    flipper_canbus_app_start_worker(app);
     flipper_canbus_scene_dashboard_update(app);
-
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipperCanbusViewDashboardScreen);
+    flipper_canbus_app_start_worker(app);
 }
 
 bool flipper_canbus_scene_dashboard_on_event(void* context, SceneManagerEvent event) {
     FlipperCanbusApp* app = context;
     bool consumed = false;
 
-    if(event.type == SceneManagerEventTypeCustom) {
-        if(event.event == FlipperCanbusCustomEventWorkerError) {
-            scene_manager_set_scene_state(
-                app->scene_manager, FlipperCanbusSceneError, FlipperCanbusSceneDashboard);
-            scene_manager_next_scene(app->scene_manager, FlipperCanbusSceneError);
-            consumed = true;
+    if(event.type == SceneManagerEventTypeTick) {
+        if(flipper_canbus_app_is_worker_error_pending(app)) {
+            flipper_canbus_app_show_worker_error(app, FlipperCanbusSceneDashboard);
+        } else {
+            flipper_canbus_scene_dashboard_update(app);
         }
-    } else if(event.type == SceneManagerEventTypeTick) {
-        flipper_canbus_scene_dashboard_update(app);
         consumed = true;
     }
 

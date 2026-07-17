@@ -1,7 +1,7 @@
 #pragma once
 
 #include <gui/view.h>
-#include "../workers/flipper_canbus_worker.h"
+#include <workers/flipper_canbus_worker.h>
 
 typedef struct FlipperCanbusViewCanbus FlipperCanbusViewCanbus;
 

@@ -17,7 +17,7 @@ static void
     }
 
     for(size_t i = 0; i < can_frames_count; i++) {
-        furi_string_printf(app->text, "0x%03lX", (unsigned long)app->can_frames[i].id);
+        furi_string_printf(app->text, "0x%03lX", app->can_frames[i].id);
         submenu_add_item(
             app->submenu,
             furi_string_get_cstr(app->text),
@@ -41,12 +41,7 @@ bool flipper_canbus_scene_canbus_on_event(void* context, SceneManagerEvent event
     bool consumed = false;
 
     if(event.type == SceneManagerEventTypeCustom) {
-        if(event.event == FlipperCanbusCustomEventWorkerError) {
-            scene_manager_set_scene_state(
-                app->scene_manager, FlipperCanbusSceneError, FlipperCanbusSceneCanbus);
-            scene_manager_next_scene(app->scene_manager, FlipperCanbusSceneError);
-            consumed = true;
-        } else if(event.event == FlipperCanbusCustomEventCanIdSelected) {
+        if(event.event == FlipperCanbusCustomEventCanIdSelected) {
             scene_manager_set_scene_state(
                 app->scene_manager,
                 FlipperCanbusSceneCanbus,
@@ -55,7 +50,16 @@ bool flipper_canbus_scene_canbus_on_event(void* context, SceneManagerEvent event
             consumed = true;
         }
     } else if(event.type == SceneManagerEventTypeTick) {
-        flipper_canbus_scene_canbus_rebuild_submenu(app, submenu_get_selected_item(app->submenu));
+        if(flipper_canbus_app_is_worker_error_pending(app)) {
+            flipper_canbus_app_show_worker_error(app, FlipperCanbusSceneCanbus);
+        } else {
+            uint32_t id_count = flipper_canbus_worker_get_count(app->can_worker);
+            if(id_count != app->canbus_id_count) {
+                app->canbus_id_count = id_count;
+                flipper_canbus_scene_canbus_rebuild_submenu(
+                    app, submenu_get_selected_item(app->submenu));
+            }
+        }
         consumed = true;
     }
     return consumed;
@@ -64,13 +68,12 @@ bool flipper_canbus_scene_canbus_on_event(void* context, SceneManagerEvent event
 void flipper_canbus_scene_canbus_on_enter(void* context) {
     FlipperCanbusApp* app = context;
 
-    flipper_canbus_app_start_worker(app);
-
-    submenu_reset(app->submenu);
     flipper_canbus_scene_canbus_rebuild_submenu(
         app, scene_manager_get_scene_state(app->scene_manager, FlipperCanbusSceneCanbus));
+    app->canbus_id_count = flipper_canbus_worker_get_count(app->can_worker);
 
     view_dispatcher_switch_to_view(app->view_dispatcher, FlipperCanbusViewSubmenu);
+    flipper_canbus_app_start_worker(app);
 }
 
 void flipper_canbus_scene_canbus_on_exit(void* context) {

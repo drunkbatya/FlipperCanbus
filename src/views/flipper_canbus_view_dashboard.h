@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../decoders/rusefi_can_decoder.h"
+#include <decoders/rusefi_can_decoder.h>
 
 #include <gui/view.h>
 

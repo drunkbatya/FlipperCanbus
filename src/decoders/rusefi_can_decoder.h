@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../workers/flipper_canbus_worker.h"
+#include <workers/flipper_canbus_worker.h>
 
 #include <stdbool.h>
 #include <stdint.h>

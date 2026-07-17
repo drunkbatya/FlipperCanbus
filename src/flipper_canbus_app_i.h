@@ -3,7 +3,7 @@
 #include "scenes/flipper_canbus_scene.h"
 #include "views/flipper_canbus_view_dashboard.h"
 #include "views/flipper_canbus_view_canbus.h"
-#include "workers/flipper_canbus_worker.h"
+#include <workers/flipper_canbus_worker.h>
 
 #include <furi.h>
 #include <gui/gui.h>
@@ -26,7 +26,11 @@ typedef struct {
 
     FlipperCanbusWorker* can_worker;
     FlipperCanbusFrame* can_frames;
+    uint32_t canbus_id_count;
     FuriString* text;
+    volatile FlipperCanbusWorkerErrorResult worker_error;
+    const char* volatile driver_error;
+    volatile bool worker_error_pending;
 } FlipperCanbusApp;
 
 typedef enum {
@@ -39,9 +43,10 @@ typedef enum {
 
 typedef enum {
     FlipperCanbusCustomEventCanIdSelected,
-    FlipperCanbusCustomEventWorkerError,
     FlipperCanbusCustomEventErrorDialogDone,
 } FlipperCanbusCustomEvent;
 
 void flipper_canbus_app_start_worker(FlipperCanbusApp* app);
 void flipper_canbus_app_stop_worker(FlipperCanbusApp* app);
+bool flipper_canbus_app_is_worker_error_pending(FlipperCanbusApp* app);
+void flipper_canbus_app_show_worker_error(FlipperCanbusApp* app, FlipperCanbusScene retry_scene);

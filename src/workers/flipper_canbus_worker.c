@@ -1,4 +1,4 @@
-#include "flipper_canbus_worker_i.h"
+#include <workers/flipper_canbus_worker_i.h>
 
 #include <core/check.h>
 
@@ -15,27 +15,22 @@ static void flipper_canbus_worker_unlock(FlipperCanbusWorker* worker) {
     furi_check(furi_mutex_release(worker->can_messages_mutex) == FuriStatusOk);
 }
 
+typedef enum {
+    FlipperCanbusWorkerPollIdle,
+    FlipperCanbusWorkerPollMessageReceived,
+    FlipperCanbusWorkerPollError,
+    FlipperCanbusWorkerPollStop,
+} FlipperCanbusWorkerPollResult;
+
 static void flipper_canbus_worker_report_error(
     FlipperCanbusWorker* worker,
     FlipperCanbusWorkerErrorResult error,
     eERRORRESULT driver_error) {
-    FlipperCanbusWorkerErrorCallback callback;
-    void* callback_context;
     const char* driver_error_string = mcp251xfd_glue_error_to_string(driver_error);
 
-    flipper_canbus_worker_lock(worker);
-    if(worker->error_reported) {
-        flipper_canbus_worker_unlock(worker);
-        return;
+    if(worker->error_callback) {
+        worker->error_callback(worker->error_callback_context, error, driver_error_string);
     }
-    worker->error_reported = true;
-    worker->last_error = error;
-    worker->last_driver_error = driver_error_string;
-    callback = worker->error_callback;
-    callback_context = worker->error_callback_context;
-    flipper_canbus_worker_unlock(worker);
-
-    if(callback) callback(callback_context);
 }
 
 static void flipper_canbus_worker_update_insert_message(
@@ -57,21 +52,14 @@ static void flipper_canbus_worker_update_insert_message(
     }
 }
 
-static void flipper_canbus_worker_process_rx_queue(FlipperCanbusWorker* worker) {
-    FlipperCanbusRxMessage message;
-
-    flipper_canbus_worker_lock(worker);
-    while(furi_message_queue_get(worker->can_rx_queue, &message, 0) == FuriStatusOk) {
-        flipper_canbus_worker_update_insert_message(worker, &message);
-    }
-    flipper_canbus_worker_unlock(worker);
-}
-
-static bool flipper_canbus_worker_poll_mcp251xfd(FlipperCanbusWorker* worker) {
-    if(!worker->mcp_ready) return false;
-
+static FlipperCanbusWorkerPollResult
+    flipper_canbus_worker_poll_mcp251xfd(FlipperCanbusWorker* worker) {
     bool message_received = false;
-    while(true) {
+    for(uint32_t i = 0; i < FLIPPER_CANBUS_RX_FIFO_DEPTH; i++) {
+        if(furi_thread_flags_get() & FlipperCanbusWorkerEventStop) {
+            return FlipperCanbusWorkerPollStop;
+        }
+
         setMCP251XFD_FIFOstatus status = MCP251XFD_RX_FIFO_EMPTY;
         eERRORRESULT error =
             MCP251XFD_GetFIFOStatus(&worker->mcp, FLIPPER_CANBUS_RX_FIFO, &status);
@@ -79,7 +67,7 @@ static bool flipper_canbus_worker_poll_mcp251xfd(FlipperCanbusWorker* worker) {
             FURI_LOG_W(TAG, "GetFIFOStatus failed: %s", mcp251xfd_glue_error_to_string(error));
             flipper_canbus_worker_report_error(
                 worker, FlipperCanbusWorkerErrorGetFifoStatus, error);
-            break;
+            return FlipperCanbusWorkerPollError;
         }
         if((status & MCP251XFD_RX_FIFO_NOT_EMPTY) == 0) break;
 
@@ -93,7 +81,7 @@ static bool flipper_canbus_worker_poll_mcp251xfd(FlipperCanbusWorker* worker) {
             FURI_LOG_W(TAG, "ReceiveMessage failed: %s", mcp251xfd_glue_error_to_string(error));
             flipper_canbus_worker_report_error(
                 worker, FlipperCanbusWorkerErrorReceiveMessage, error);
-            break;
+            return FlipperCanbusWorkerPollError;
         }
 
         FlipperCanbusRxMessage rx_message = {
@@ -102,21 +90,19 @@ static bool flipper_canbus_worker_poll_mcp251xfd(FlipperCanbusWorker* worker) {
         };
         memcpy(rx_message.data, payload, rx_message.data_size);
 
+        flipper_canbus_worker_lock(worker);
+        flipper_canbus_worker_update_insert_message(worker, &rx_message);
+        flipper_canbus_worker_unlock(worker);
+
         message_received = true;
-        if(furi_message_queue_put(worker->can_rx_queue, &rx_message, 0) != FuriStatusOk) {
-            worker->can_rx_dropped++;
-        }
     }
 
-    return message_received;
+    return message_received ? FlipperCanbusWorkerPollMessageReceived : FlipperCanbusWorkerPollIdle;
 }
 
 static void flipper_canbus_worker_gpio_isr(void* context) {
     FlipperCanbusWorker* worker = context;
-    if(worker->started) {
-        furi_thread_flags_set(
-            furi_thread_get_id(worker->thread), FlipperCanbusWorkerEventMsgReceived);
-    }
+    furi_thread_flags_set(furi_thread_get_id(worker->thread), FlipperCanbusWorkerEventMsgReceived);
 }
 
 static bool flipper_canbus_worker_configure_mcp251xfd(FlipperCanbusWorker* worker) {
@@ -138,10 +124,10 @@ static bool flipper_canbus_worker_configure_mcp251xfd(FlipperCanbusWorker* worke
         .OscFreq = 0,
         .SysclkConfig = MCP251XFD_SYSCLK_IS_CLKIN,
         .ClkoPinConfig = MCP251XFD_CLKO_SOF,
-        .SYSCLK_Result = &worker->sysclk,
+        .SYSCLK_Result = NULL,
         .NominalBitrate = FLIPPER_CANBUS_BITRATE,
         .DataBitrate = MCP251XFD_NO_CANFD,
-        .BitTimeStats = &worker->bit_time_stats,
+        .BitTimeStats = NULL,
         .Bandwidth = MCP251XFD_NO_DELAY,
         .ControlFlags =
             MCP251XFD_CAN_RESTRICTED_MODE_ON_ERROR | MCP251XFD_CAN_ESI_REFLECTS_ERROR_STATUS |
@@ -164,7 +150,7 @@ static bool flipper_canbus_worker_configure_mcp251xfd(FlipperCanbusWorker* worke
         .Priority = MCP251XFD_MESSAGE_TX_PRIORITY16,
         .ControlFlags = MCP251XFD_FIFO_NO_CONTROL_FLAGS,
         .InterruptFlags = MCP251XFD_FIFO_OVERFLOW_INT | MCP251XFD_FIFO_RECEIVE_FIFO_NOT_EMPTY_INT,
-        .RAMInfos = &worker->rx_fifo_ram,
+        .RAMInfos = NULL,
     };
 
     MCP251XFD_Filter standard_filter = {
@@ -231,34 +217,37 @@ static int32_t flipper_canbus_worker_thread(void* arg) {
     FlipperCanbusWorker* worker = arg;
     furi_assert(worker);
 
-    worker->mcp_ready = flipper_canbus_worker_configure_mcp251xfd(worker);
-    if(worker->mcp_ready) {
-        furi_hal_gpio_remove_int_callback(&gpio_ext_pa4);
-        furi_hal_gpio_init(&gpio_ext_pa4, GpioModeInterruptFall, GpioPullUp, GpioSpeedVeryHigh);
-        furi_hal_gpio_add_int_callback(&gpio_ext_pa4, flipper_canbus_worker_gpio_isr, worker);
-        furi_hal_gpio_enable_int_callback(&gpio_ext_pa4);
-    }
+    if(!flipper_canbus_worker_configure_mcp251xfd(worker)) return 0;
+
+    furi_hal_gpio_init(&gpio_ext_pa4, GpioModeInterruptFall, GpioPullUp, GpioSpeedVeryHigh);
+    furi_hal_gpio_add_int_callback(&gpio_ext_pa4, flipper_canbus_worker_gpio_isr, worker);
+    furi_hal_gpio_enable_int_callback(&gpio_ext_pa4);
 
     while(1) {
         uint32_t events =
             furi_thread_flags_wait(FlipperCanbusWorkerEventAll, FuriFlagWaitAny, FuriWaitForever);
         if(events & FlipperCanbusWorkerEventStop) break;
 
-        bool message_received = false;
-        if(!worker->error_reported && (events & FlipperCanbusWorkerEventMsgReceived)) {
-            message_received = flipper_canbus_worker_poll_mcp251xfd(worker);
+        if(events & FlipperCanbusWorkerEventMsgReceived) {
+            bool stop_worker = false;
+            while(true) {
+                FlipperCanbusWorkerPollResult result =
+                    flipper_canbus_worker_poll_mcp251xfd(worker);
+                if((result == FlipperCanbusWorkerPollError) ||
+                   (result == FlipperCanbusWorkerPollStop)) {
+                    stop_worker = true;
+                    break;
+                }
+                if(result == FlipperCanbusWorkerPollIdle) break;
+            }
+            if(stop_worker) break;
         }
-
-        if(message_received) flipper_canbus_worker_process_rx_queue(worker);
     }
 
-    if(worker->mcp_ready) {
-        furi_hal_gpio_disable_int_callback(&gpio_ext_pa4);
-        furi_hal_gpio_remove_int_callback(&gpio_ext_pa4);
-        MCP251XFD_RequestOperationMode(&worker->mcp, MCP251XFD_CONFIGURATION_MODE, true);
-        furi_hal_spi_bus_handle_deinit(&worker->spi_handle);
-        worker->mcp_ready = false;
-    }
+    furi_hal_gpio_disable_int_callback(&gpio_ext_pa4);
+    furi_hal_gpio_remove_int_callback(&gpio_ext_pa4);
+    MCP251XFD_RequestOperationMode(&worker->mcp, MCP251XFD_CONFIGURATION_MODE, true);
+    furi_hal_spi_bus_handle_deinit(&worker->spi_handle);
 
     return 0;
 }
@@ -267,8 +256,6 @@ FlipperCanbusWorker* flipper_canbus_worker_alloc(void) {
     FlipperCanbusWorker* worker = malloc(sizeof(FlipperCanbusWorker));
     memset(worker, 0, sizeof(FlipperCanbusWorker));
 
-    worker->can_rx_queue =
-        furi_message_queue_alloc(FLIPPER_CANBUS_RX_QUEUE_SIZE, sizeof(FlipperCanbusRxMessage));
     worker->can_messages_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     worker->thread = furi_thread_alloc_ex(TAG, 4096, flipper_canbus_worker_thread, worker);
     can_msgs_dict_init(worker->can_messages);
@@ -280,43 +267,35 @@ void flipper_canbus_worker_free(FlipperCanbusWorker* worker) {
     furi_assert(worker);
     can_msgs_dict_clear(worker->can_messages);
     furi_mutex_free(worker->can_messages_mutex);
-    furi_message_queue_free(worker->can_rx_queue);
     furi_thread_free(worker->thread);
     free(worker);
 }
 
 void flipper_canbus_worker_start(FlipperCanbusWorker* worker) {
     furi_assert(worker);
-    if(worker->started) return;
+    if(furi_thread_get_state(worker->thread) != FuriThreadStateStopped) return;
 
-    furi_message_queue_reset(worker->can_rx_queue);
     flipper_canbus_worker_lock(worker);
     can_msgs_dict_reset(worker->can_messages);
-    worker->error_reported = false;
-    worker->last_driver_error = NULL;
     flipper_canbus_worker_unlock(worker);
-    worker->can_rx_dropped = 0;
-    worker->started = true;
     furi_thread_start(worker->thread);
 }
 
 void flipper_canbus_worker_send_stop(FlipperCanbusWorker* worker) {
     furi_assert(worker);
-    if(!worker->started) return;
+    if(furi_thread_get_state(worker->thread) == FuriThreadStateStopped) return;
 
     furi_thread_flags_set(furi_thread_get_id(worker->thread), FlipperCanbusWorkerEventStop);
 }
 
 void flipper_canbus_worker_await_stop(FlipperCanbusWorker* worker) {
     furi_assert(worker);
-    if(!worker->started) return;
+    if(furi_thread_get_state(worker->thread) == FuriThreadStateStopped) return;
 
     furi_thread_join(worker->thread);
-    furi_message_queue_reset(worker->can_rx_queue);
     flipper_canbus_worker_lock(worker);
     can_msgs_dict_reset(worker->can_messages);
     flipper_canbus_worker_unlock(worker);
-    worker->started = false;
 }
 
 void flipper_canbus_worker_set_error_callback(
@@ -334,6 +313,20 @@ uint32_t flipper_canbus_worker_get_count(FlipperCanbusWorker* worker) {
     return count;
 }
 
+static void flipper_canbus_worker_sort_frames_by_id(FlipperCanbusFrame* frames, size_t count) {
+    for(size_t i = 0; i < count; i++) {
+        size_t min = i;
+        for(size_t j = i + 1; j < count; j++) {
+            if(frames[j].id < frames[min].id) min = j;
+        }
+
+        if(min == i) continue;
+        FlipperCanbusFrame tmp = frames[i];
+        frames[i] = frames[min];
+        frames[min] = tmp;
+    }
+}
+
 size_t flipper_canbus_worker_copy_snapshot(
     FlipperCanbusWorker* worker,
     FlipperCanbusFrame* frames,
@@ -342,7 +335,6 @@ size_t flipper_canbus_worker_copy_snapshot(
     furi_check(frames);
 
     flipper_canbus_worker_lock(worker);
-
     size_t count = 0;
     can_msgs_dict_it_t it;
     for(can_msgs_dict_it(it, worker->can_messages); !can_msgs_dict_end_p(it);
@@ -356,18 +348,9 @@ size_t flipper_canbus_worker_copy_snapshot(
         memcpy(frames[count].last_data, item->value.last_data, item->value.last_len);
         count++;
     }
-
     flipper_canbus_worker_unlock(worker);
 
-    for(size_t i = 1; i < count; i++) {
-        FlipperCanbusFrame frame = frames[i];
-        size_t j = i;
-        while((j > 0) && (frames[j - 1].id > frame.id)) {
-            frames[j] = frames[j - 1];
-            j--;
-        }
-        frames[j] = frame;
-    }
+    flipper_canbus_worker_sort_frames_by_id(frames, count);
 
     return count;
 }
@@ -381,55 +364,43 @@ bool flipper_canbus_worker_get_frame(
 
     bool found = false;
     flipper_canbus_worker_lock(worker);
+    do {
+        FlipperCanbusMsg* msg = can_msgs_dict_get(worker->can_messages, id);
+        if(!msg) break;
 
-    FlipperCanbusMsg* msg = can_msgs_dict_get(worker->can_messages, id);
-    if(msg) {
         frame->id = id;
         frame->count = msg->count;
         frame->last_len = msg->last_len;
         memcpy(frame->last_data, msg->last_data, msg->last_len);
         found = true;
-    }
-
+    } while(0);
     flipper_canbus_worker_unlock(worker);
     return found;
 }
 
-static const char* flipper_canbus_worker_error_get_name(FlipperCanbusWorkerErrorResult error) {
-    switch(error) {
-    case FlipperCanbusWorkerErrorSpiTransfer:
-        return "SPI transfer";
-    case FlipperCanbusWorkerErrorGetFifoStatus:
-        return "Get FIFO status";
-    case FlipperCanbusWorkerErrorReceiveMessage:
-        return "Receive message";
-    case FlipperCanbusWorkerErrorMcpInit:
-        return "MCP251XFD init";
-    case FlipperCanbusWorkerErrorFifoConfig:
-        return "FIFO config";
-    case FlipperCanbusWorkerErrorStandardFilterConfig:
-        return "Standard filter config";
-    case FlipperCanbusWorkerErrorExtendedFilterConfig:
-        return "Extended filter config";
-    case FlipperCanbusWorkerErrorStartCan:
-        return "Start CAN";
-    default:
-        return "CAN worker";
-    }
-}
-
-void flipper_canbus_worker_format_last_error(FlipperCanbusWorker* worker, FuriString* text) {
+void flipper_canbus_worker_get_frames(
+    FlipperCanbusWorker* worker,
+    const uint32_t* ids,
+    FlipperCanbusFrame* frames,
+    bool* found,
+    size_t count) {
     furi_check(worker);
-    furi_check(text);
+    furi_check(ids);
+    furi_check(frames);
+    furi_check(found);
 
     flipper_canbus_worker_lock(worker);
-    FlipperCanbusWorkerErrorResult error = worker->last_error;
-    const char* driver_error = worker->last_driver_error;
+    for(size_t i = 0; i < count; i++) {
+        FlipperCanbusMsg* msg = can_msgs_dict_get(worker->can_messages, ids[i]);
+        if(msg) {
+            frames[i].id = ids[i];
+            frames[i].count = msg->count;
+            frames[i].last_len = msg->last_len;
+            memcpy(frames[i].last_data, msg->last_data, msg->last_len);
+            found[i] = true;
+        } else {
+            found[i] = false;
+        }
+    }
     flipper_canbus_worker_unlock(worker);
-
-    furi_string_printf(
-        text,
-        "%s failed\n%s",
-        flipper_canbus_worker_error_get_name(error),
-        driver_error ? driver_error : "Unknown error");
 }

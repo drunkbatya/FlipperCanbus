@@ -11,7 +11,6 @@ struct FlipperCanbusViewCanbus {
 typedef struct {
     FlipperCanbusFrame frame;
     FuriString* line;
-    bool has_frame;
 } FlipperCanbusViewCanbusModel;
 
 static void flipper_canbus_view_canbus_draw_callback(Canvas* canvas, void* _model) {
@@ -20,22 +19,13 @@ static void flipper_canbus_view_canbus_draw_callback(Canvas* canvas, void* _mode
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
 
-    if(!model->has_frame) {
-        furi_string_set_str(model->line, "CAN ID not found");
-        canvas_draw_str(canvas, 0, 12, furi_string_get_cstr(model->line));
-        return;
-    }
-
-    furi_string_printf(model->line, "ID 0x%03lX", (unsigned long)model->frame.id);
+    furi_string_printf(model->line, "ID 0x%03lX", model->frame.id);
     canvas_draw_str(canvas, 0, 10, furi_string_get_cstr(model->line));
 
     canvas_set_font(canvas, FontSecondary);
 
     furi_string_printf(
-        model->line,
-        "Count: %lu  Len: %lu",
-        (unsigned long)model->frame.count,
-        (unsigned long)model->frame.last_len);
+        model->line, "Count: %lu  Len: %lu", model->frame.count, model->frame.last_len);
     canvas_draw_str(canvas, 0, 24, furi_string_get_cstr(model->line));
 
     furi_string_set_str(model->line, "Data:");
@@ -60,10 +50,7 @@ FlipperCanbusViewCanbus* flipper_canbus_view_canbus_alloc(void) {
     with_view_model(
         view_canbus->view,
         FlipperCanbusViewCanbusModel * model,
-        {
-            model->line = furi_string_alloc();
-            model->has_frame = false;
-        },
+        { model->line = furi_string_alloc(); },
         true);
 
     return view_canbus;
@@ -71,11 +58,13 @@ FlipperCanbusViewCanbus* flipper_canbus_view_canbus_alloc(void) {
 
 void flipper_canbus_view_canbus_free(FlipperCanbusViewCanbus* view_canbus) {
     furi_assert(view_canbus);
+
     with_view_model(
         view_canbus->view,
         FlipperCanbusViewCanbusModel * model,
         { furi_string_free(model->line); },
         false);
+
     view_free(view_canbus->view);
     free(view_canbus);
 }
@@ -88,16 +77,8 @@ View* flipper_canbus_view_canbus_get_view(FlipperCanbusViewCanbus* view_canbus) 
 void flipper_canbus_view_canbus_update(
     FlipperCanbusViewCanbus* view_canbus,
     const FlipperCanbusFrame* frame) {
+    furi_assert(frame);
+
     with_view_model(
-        view_canbus->view,
-        FlipperCanbusViewCanbusModel * model,
-        {
-            if(frame) {
-                model->frame = *frame;
-                model->has_frame = true;
-            } else {
-                model->has_frame = false;
-            }
-        },
-        true);
+        view_canbus->view, FlipperCanbusViewCanbusModel * model, { model->frame = *frame; }, true);
 }

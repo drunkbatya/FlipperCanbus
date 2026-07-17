@@ -1,6 +1,6 @@
 #pragma once
 
-#include "flipper_canbus_worker.h"
+#include <workers/flipper_canbus_worker.h>
 
 #include <furi.h>
 #include <furi_hal_gpio.h>
@@ -12,7 +12,7 @@
 #include "../lib/mcp251Xfd/MCP251XFD.h"
 #include "../lib/mcp251Xfd_glue/mcp251Xfd_glue.h"
 
-#define FLIPPER_CANBUS_RX_QUEUE_SIZE  32U
+#define FLIPPER_CANBUS_RX_FIFO_DEPTH  32U
 #define FLIPPER_CANBUS_RX_FIFO        MCP251XFD_FIFO1
 #define FLIPPER_CANBUS_SPI_CLOCK_HZ   2000000U
 #define FLIPPER_CANLIN_MODULE_XTAL_HZ 40000000U
@@ -34,25 +34,14 @@ DICT_DEF2(can_msgs_dict, uint32_t, M_DEFAULT_OPLIST, FlipperCanbusMsg, M_POD_OPL
 
 struct FlipperCanbusWorker {
     FuriThread* thread;
-    FuriMessageQueue* can_rx_queue;
     FuriMutex* can_messages_mutex;
     can_msgs_dict_t can_messages;
 
     FuriHalSpiBusHandle spi_handle;
     MCP251XFD mcp;
-    MCP251XFD_BitTimeStats bit_time_stats;
-    MCP251XFD_RAMInfos rx_fifo_ram;
-    uint32_t sysclk;
 
     FlipperCanbusWorkerErrorCallback error_callback;
     void* error_callback_context;
-    FlipperCanbusWorkerErrorResult last_error;
-    const char* last_driver_error;
-
-    volatile bool started;
-    bool mcp_ready;
-    bool error_reported;
-    uint32_t can_rx_dropped;
 };
 
 typedef enum {

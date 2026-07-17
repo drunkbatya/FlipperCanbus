@@ -8,11 +8,36 @@ static void flipper_canbus_scene_error_dialog_callback(DialogExResult result, vo
         app->view_dispatcher, FlipperCanbusCustomEventErrorDialogDone);
 }
 
+static const char* flipper_canbus_scene_error_get_name(FlipperCanbusWorkerErrorResult error) {
+    switch(error) {
+    case FlipperCanbusWorkerErrorGetFifoStatus:
+        return "Get FIFO status";
+    case FlipperCanbusWorkerErrorReceiveMessage:
+        return "Receive message";
+    case FlipperCanbusWorkerErrorMcpInit:
+        return "MCP251XFD init";
+    case FlipperCanbusWorkerErrorFifoConfig:
+        return "FIFO config";
+    case FlipperCanbusWorkerErrorStandardFilterConfig:
+        return "Standard filter config";
+    case FlipperCanbusWorkerErrorExtendedFilterConfig:
+        return "Extended filter config";
+    case FlipperCanbusWorkerErrorStartCan:
+        return "Start CAN";
+    default:
+        return "CAN worker";
+    }
+}
+
 void flipper_canbus_scene_error_on_enter(void* context) {
     FlipperCanbusApp* app = context;
 
     flipper_canbus_app_stop_worker(app);
-    flipper_canbus_worker_format_last_error(app->can_worker, app->text);
+    furi_string_printf(
+        app->text,
+        "%s failed\n%s",
+        flipper_canbus_scene_error_get_name(app->worker_error),
+        app->driver_error);
 
     DialogEx* dialog_ex = app->dialog_ex;
     dialog_ex_reset(dialog_ex);
@@ -34,15 +59,7 @@ bool flipper_canbus_scene_error_on_event(void* context, SceneManagerEvent event)
         if(event.event == FlipperCanbusCustomEventErrorDialogDone) {
             uint32_t retry_scene =
                 scene_manager_get_scene_state(app->scene_manager, FlipperCanbusSceneError);
-            if(retry_scene == FlipperCanbusSceneCanbus) {
-                scene_manager_search_and_switch_to_previous_scene(
-                    app->scene_manager, FlipperCanbusSceneCanbus);
-            } else if(retry_scene == FlipperCanbusSceneDashboard) {
-                scene_manager_search_and_switch_to_previous_scene(
-                    app->scene_manager, FlipperCanbusSceneDashboard);
-            } else {
-                scene_manager_previous_scene(app->scene_manager);
-            }
+            scene_manager_search_and_switch_to_previous_scene(app->scene_manager, retry_scene);
             consumed = true;
         }
     } else if(event.type == SceneManagerEventTypeBack) {

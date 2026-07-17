@@ -105,7 +105,6 @@ struct FlipperCanbusViewDashboard {
 
 typedef struct {
     RusEfiCanDecoded decoded;
-    FuriString* value;
     FuriString* line;
     uint8_t page;
 } FlipperCanbusViewDashboardModel;
@@ -144,7 +143,7 @@ static const FlipperCanbusDashboardPage flipper_canbus_dashboard_pages[] = {
                  FlipperCanbusDashboardFormatFixed2,
                  "%"},
                 {"Speed", FlipperCanbusDashboardValueSpeed, FlipperCanbusDashboardFormatInt, "kph"},
-                {"Gear", FlipperCanbusDashboardValueGear, FlipperCanbusDashboardFormatInt, ""},
+                {"Gear", FlipperCanbusDashboardValueGear, FlipperCanbusDashboardFormatInt, NULL},
                 {"Flex", FlipperCanbusDashboardValueFlex, FlipperCanbusDashboardFormatInt, "%"},
             },
     },
@@ -176,7 +175,7 @@ static const FlipperCanbusDashboardPage flipper_canbus_dashboard_pages[] = {
                 {"Knock Count",
                  FlipperCanbusDashboardValueKnockCount,
                  FlipperCanbusDashboardFormatInt,
-                 ""},
+                 NULL},
                 {"Knock 0",
                  FlipperCanbusDashboardValueKnock0,
                  FlipperCanbusDashboardFormatInt,
@@ -235,11 +234,11 @@ static const FlipperCanbusDashboardPage flipper_canbus_dashboard_pages[] = {
                 {"Lambda 1",
                  FlipperCanbusDashboardValueLambda1,
                  FlipperCanbusDashboardFormatFixed4,
-                 ""},
+                 NULL},
                 {"Lambda 2",
                  FlipperCanbusDashboardValueLambda2,
                  FlipperCanbusDashboardFormatFixed4,
-                 ""},
+                 NULL},
                 {"Fuel Trim 1",
                  FlipperCanbusDashboardValueFuelTrim1,
                  FlipperCanbusDashboardFormatFixed2,
@@ -275,11 +274,11 @@ static const FlipperCanbusDashboardPage flipper_canbus_dashboard_pages[] = {
                 {"Warnings",
                  FlipperCanbusDashboardValueWarnings,
                  FlipperCanbusDashboardFormatInt,
-                 ""},
+                 NULL},
                 {"Last Error",
                  FlipperCanbusDashboardValueLastError,
                  FlipperCanbusDashboardFormatInt,
-                 ""},
+                 NULL},
                 {"Distance",
                  FlipperCanbusDashboardValueDistance,
                  FlipperCanbusDashboardFormatFixed1,
@@ -287,28 +286,28 @@ static const FlipperCanbusDashboardPage flipper_canbus_dashboard_pages[] = {
                 {"Main Relay",
                  FlipperCanbusDashboardValueMainRelay,
                  FlipperCanbusDashboardFormatBool,
-                 ""},
+                 NULL},
                 {"Fuel Pump",
                  FlipperCanbusDashboardValueFuelPump,
                  FlipperCanbusDashboardFormatBool,
-                 ""},
+                 NULL},
             },
     },
     {
         .title = "Status 2",
         .rows =
             {
-                {"CEL", FlipperCanbusDashboardValueCel, FlipperCanbusDashboardFormatBool, ""},
+                {"CEL", FlipperCanbusDashboardValueCel, FlipperCanbusDashboardFormatBool, NULL},
                 {"Rev Limiter",
                  FlipperCanbusDashboardValueRevLimiter,
                  FlipperCanbusDashboardFormatBool,
-                 ""},
-                {"Fan 1", FlipperCanbusDashboardValueFan1, FlipperCanbusDashboardFormatBool, ""},
-                {"Fan 2", FlipperCanbusDashboardValueFan2, FlipperCanbusDashboardFormatBool, ""},
+                 NULL},
+                {"Fan 1", FlipperCanbusDashboardValueFan1, FlipperCanbusDashboardFormatBool, NULL},
+                {"Fan 2", FlipperCanbusDashboardValueFan2, FlipperCanbusDashboardFormatBool, NULL},
                 {"EGO Heat",
                  FlipperCanbusDashboardValueEgoHeat,
                  FlipperCanbusDashboardFormatBool,
-                 ""},
+                 NULL},
             },
     },
     {
@@ -356,7 +355,7 @@ static const FlipperCanbusDashboardPage flipper_canbus_dashboard_pages[] = {
                 {"Lambda Protect",
                  FlipperCanbusDashboardValueLambdaProtect,
                  FlipperCanbusDashboardFormatBool,
-                 ""},
+                 NULL},
                 {"EGT 1", FlipperCanbusDashboardValueEgt1, FlipperCanbusDashboardFormatInt, "C"},
             },
     },
@@ -381,7 +380,8 @@ static const FlipperCanbusDashboardPage flipper_canbus_dashboard_pages[] = {
     },
 };
 
-static const size_t flipper_canbus_dashboard_page_count = COUNT_OF(flipper_canbus_dashboard_pages);
+static const uint8_t flipper_canbus_dashboard_page_count =
+    COUNT_OF(flipper_canbus_dashboard_pages);
 
 static const RusEfiCanValue* flipper_canbus_view_dashboard_get_value(
     const RusEfiCanDecoded* decoded,
@@ -520,57 +520,52 @@ static const RusEfiCanValue* flipper_canbus_view_dashboard_get_value(
     furi_crash();
 }
 
-static void flipper_canbus_view_dashboard_format_value(
-    FuriString* out,
-    const RusEfiCanValue* value,
-    FlipperCanbusDashboardFormat format) {
-    if(format == FlipperCanbusDashboardFormatBool) {
-        if(!value->valid) {
-            furi_string_set_str(out, "-");
-        } else {
-            furi_string_set_str(out, value->value ? "1" : "0");
-        }
-        return;
-    }
-
-    if(!value->valid) {
-        furi_string_set_str(out, "--");
-        return;
-    }
-
-    if(format == FlipperCanbusDashboardFormatInt) {
-        furi_string_printf(out, "%ld", (long)value->value);
-        return;
-    }
-
-    uint8_t decimals = 1U;
-    if(format == FlipperCanbusDashboardFormatFixed2) {
-        decimals = 2U;
-    } else if(format == FlipperCanbusDashboardFormatFixed3) {
-        decimals = 3U;
-    } else if(format == FlipperCanbusDashboardFormatFixed4) {
-        decimals = 4U;
-    }
-
+static void
+    flipper_canbus_view_dashboard_format_fixed(FuriString* out, int32_t value, uint8_t decimals) {
     int32_t div = 1;
     for(uint8_t i = 0; i < decimals; i++) {
         div *= 10;
     }
 
-    const bool negative = value->value < 0;
-    const int32_t abs_value = negative ? -value->value : value->value;
+    const bool negative = value < 0;
+    const uint32_t abs_value = negative ? (uint32_t)(-(value + 1)) + 1U : (uint32_t)value;
     const char* sign = negative ? "-" : "";
-    const long whole = abs_value / div;
-    const long fraction = abs_value % div;
+    const uint32_t whole = abs_value / (uint32_t)div;
+    const uint32_t fraction = abs_value % (uint32_t)div;
 
-    if(decimals == 1U) {
-        furi_string_printf(out, "%s%ld.%01ld", sign, whole, fraction);
-    } else if(decimals == 2U) {
-        furi_string_printf(out, "%s%ld.%02ld", sign, whole, fraction);
-    } else if(decimals == 3U) {
-        furi_string_printf(out, "%s%ld.%03ld", sign, whole, fraction);
-    } else {
-        furi_string_printf(out, "%s%ld.%04ld", sign, whole, fraction);
+    furi_string_printf(out, "%s%lu.%0*lu", sign, whole, decimals, fraction);
+}
+
+static void flipper_canbus_view_dashboard_format_value(
+    FuriString* out,
+    const RusEfiCanValue* value,
+    FlipperCanbusDashboardFormat format) {
+    if(!value->valid) {
+        furi_string_set_str(out, format == FlipperCanbusDashboardFormatBool ? "-" : "--");
+        return;
+    }
+
+    switch(format) {
+    case FlipperCanbusDashboardFormatBool:
+        furi_string_set_str(out, value->value ? "1" : "0");
+        break;
+    case FlipperCanbusDashboardFormatInt:
+        furi_string_printf(out, "%ld", value->value);
+        break;
+    case FlipperCanbusDashboardFormatFixed1:
+        flipper_canbus_view_dashboard_format_fixed(out, value->value, 1U);
+        break;
+    case FlipperCanbusDashboardFormatFixed2:
+        flipper_canbus_view_dashboard_format_fixed(out, value->value, 2U);
+        break;
+    case FlipperCanbusDashboardFormatFixed3:
+        flipper_canbus_view_dashboard_format_fixed(out, value->value, 3U);
+        break;
+    case FlipperCanbusDashboardFormatFixed4:
+        flipper_canbus_view_dashboard_format_fixed(out, value->value, 4U);
+        break;
+    default:
+        furi_crash();
     }
 }
 
@@ -583,14 +578,11 @@ static void flipper_canbus_view_dashboard_draw_row(
 
     canvas_draw_str(canvas, FLIPPER_CANBUS_DASHBOARD_LABEL_X, y, dashboard_row->label);
     flipper_canbus_view_dashboard_format_value(
-        model->value,
+        model->line,
         flipper_canbus_view_dashboard_get_value(&model->decoded, dashboard_row->value_id),
         dashboard_row->format);
-    if(dashboard_row->unit[0] != '\0') {
-        furi_string_printf(
-            model->line, "%s %s", furi_string_get_cstr(model->value), dashboard_row->unit);
-    } else {
-        furi_string_set_str(model->line, furi_string_get_cstr(model->value));
+    if(dashboard_row->unit) {
+        furi_string_cat_printf(model->line, " %s", dashboard_row->unit);
     }
     canvas_draw_str_aligned(
         canvas,
@@ -609,10 +601,7 @@ static void flipper_canbus_view_dashboard_draw_callback(Canvas* canvas, void* _m
     canvas_set_font(canvas, FontSecondary);
 
     furi_string_printf(
-        model->line,
-        "< %u/%u >",
-        (unsigned)(model->page + 1U),
-        (unsigned)flipper_canbus_dashboard_page_count);
+        model->line, "< %u/%u >", model->page + 1U, flipper_canbus_dashboard_page_count);
     canvas_draw_str_aligned(
         canvas, 127, 8, AlignRight, AlignBottom, furi_string_get_cstr(model->line));
 
@@ -668,7 +657,6 @@ FlipperCanbusViewDashboard* flipper_canbus_view_dashboard_alloc(void) {
         FlipperCanbusViewDashboardModel * model,
         {
             memset(&model->decoded, 0, sizeof(model->decoded));
-            model->value = furi_string_alloc();
             model->line = furi_string_alloc();
             model->page = 0;
         },
@@ -682,10 +670,7 @@ void flipper_canbus_view_dashboard_free(FlipperCanbusViewDashboard* view_dashboa
     with_view_model(
         view_dashboard->view,
         FlipperCanbusViewDashboardModel * model,
-        {
-            furi_string_free(model->value);
-            furi_string_free(model->line);
-        },
+        { furi_string_free(model->line); },
         false);
     view_free(view_dashboard->view);
     free(view_dashboard);
