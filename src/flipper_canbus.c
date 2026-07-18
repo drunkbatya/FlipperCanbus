@@ -33,7 +33,6 @@ static void flipper_canbus_app_tick_event_callback(void* context) {
 
 static FlipperCanbusApp* flipper_canbus_app_alloc(void) {
     FlipperCanbusApp* app = malloc(sizeof(FlipperCanbusApp));
-    memset(app, 0, sizeof(FlipperCanbusApp));
 
     furi_hal_power_enable_otg();
     furi_delay_ms(100);

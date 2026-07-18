@@ -656,7 +656,6 @@ FlipperCanbusViewDashboard* flipper_canbus_view_dashboard_alloc(void) {
         view_dashboard->view,
         FlipperCanbusViewDashboardModel * model,
         {
-            memset(&model->decoded, 0, sizeof(model->decoded));
             model->line = furi_string_alloc();
             model->page = 0;
         },

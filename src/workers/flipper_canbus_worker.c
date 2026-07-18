@@ -254,7 +254,6 @@ static int32_t flipper_canbus_worker_thread(void* arg) {
 
 FlipperCanbusWorker* flipper_canbus_worker_alloc(void) {
     FlipperCanbusWorker* worker = malloc(sizeof(FlipperCanbusWorker));
-    memset(worker, 0, sizeof(FlipperCanbusWorker));
 
     worker->can_messages_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     worker->thread = furi_thread_alloc_ex(TAG, 4096, flipper_canbus_worker_thread, worker);
